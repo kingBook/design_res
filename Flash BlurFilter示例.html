@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="c" width="400" height="300"></canvas>
+<script>
+/**
+ * 模拟 Flash BlurFilter
+ * @param {ImageData} srcData
+ * @param {number} blurX 水平单侧半径（Flash的blurX）
+ * @param {number} blurY 垂直单侧半径（Flash的blurY）
+ * @param {number} quality 迭代次数 LOW=1 MEDIUM=2 HIGH=3
+ * @returns {ImageData}
+ */
+function flashBlur(srcData, blurX, blurY, quality) {
+    const w = srcData.width;
+    const h = srcData.height;
+    let current = new ImageData(new Uint8ClampedArray(srcData.data), w, h);
+
+    for (let iter = 0; iter < quality; iter++) {
+        // 1. 水平Box模糊
+        const hBlur = new ImageData(w, h);
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                let r = 0, g = 0, b = 0, a = 0;
+                let count = 0;
+                for (let dx = -blurX; dx <= blurX; dx++) {
+                    const sx = Math.max(0, Math.min(w - 1, x + dx)); // clamp
+                    const idx = (y * w + sx) * 4;
+                    r += current.data[idx];
+                    g += current.data[idx + 1];
+                    b += current.data[idx + 2];
+                    a += current.data[idx + 3];
+                    count++;
+                }
+                const outIdx = (y * w + x) * 4;
+                hBlur.data[outIdx] = r / count;
+                hBlur.data[outIdx + 1] = g / count;
+                hBlur.data[outIdx + 2] = b / count;
+                hBlur.data[outIdx + 3] = a / count;
+            }
+        }
+
+        // 2. 垂直Box模糊，基于水平模糊结果
+        const vBlur = new ImageData(w, h);
+        for (let x = 0; x < w; x++) {
+            for (let y = 0; y < h; y++) {
+                let r = 0, g = 0, b = 0, a = 0;
+                let count = 0;
+                for (let dy = -blurY; dy <= blurY; dy++) {
+                    const sy = Math.max(0, Math.min(h - 1, y + dy)); // clamp
+                    const idx = (sy * w + x) * 4;
+                    r += hBlur.data[idx];
+                    g += hBlur.data[idx + 1];
+                    b += hBlur.data[idx + 2];
+                    a += hBlur.data[idx + 3];
+                    count++;
+                }
+                const outIdx = (y * w + x) * 4;
+                vBlur.data[outIdx] = r / count;
+                vBlur.data[outIdx + 1] = g / count;
+                vBlur.data[outIdx + 2] = b / count;
+                vBlur.data[outIdx + 3] = a / count;
+            }
+        }
+
+        // 本轮结果作为下一轮输入
+        current = vBlur;
+    }
+    return current;
+}
+
+// ========== 测试代码 ==========
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+// 画一个白色方块在黑色背景
+ctx.fillStyle = '#000';
+ctx.fillRect(0,0,400,300);
+ctx.fillStyle = '#fff';
+ctx.fillRect(150,100,100,100);
+
+const src = ctx.getImageData(0,0,400,300);
+// Flash 参数示例：blurX=8 blurY=8 quality=3(HIGH)
+const result = flashBlur(src, 8, 8, 3);
+ctx.putImageData(result, 0, 0);
+</script>
+</body>
+</html>
