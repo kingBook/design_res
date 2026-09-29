@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="c" width="800" height="500"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// 向量工具
+const Vec = {
+  sub(a,b) { return {x:a.x-b.x, y:a.y-b.y}; },
+  add(a,b) { return {x:a.x+b.x, y:a.y+b.y}; },
+  mul(v,s) { return {x:v.x*s, y:v.y*s}; },
+  len(v) { return Math.hypot(v.x, v.y); },
+  normalize(v) {
+    const l = Vec.len(v);
+    return l === 0 ? {x:0,y:0} : {x:v.x/l, y:v.y/l};
+  },
+  limit(v, max) {
+    const l = Vec.len(v);
+    if(l > max) return Vec.mul(Vec.normalize(v), max);
+    return {...v};
+  }
+};
+
+class Agent {
+  constructor(x,y) {
+    this.pos = {x, y};
+    this.vel = {x: 2, y: 0};    // 初始速度
+    this.acc = {x: 0, y: 0};    // 加速度（由力产生）
+
+    this.maxSpeed = 2.5;
+    this.maxForce = 0.08;
+
+    // Wander 参数
+    this.wanderDistance = 70;   // 虚拟圆心距离角色
+    this.wanderRadius = 22;     // 虚拟圆半径
+    this.displace = 2.2;        // 每帧扰动幅度
+
+    this.wanderTarget = {x:0, y:0}; // 维持帧间状态点
+  }
+
+  // 计算漫游转向力
+  wander() {
+    const forward = Vec.normalize(this.vel);
+    // 虚拟圆心：角色前方
+    const circleCenter = Vec.add(this.pos, Vec.mul(forward, this.wanderDistance));
+
+    // 给目标点施加随机扰动
+    this.wanderTarget.x += (Math.random()-0.5)*2 * this.displace;
+    this.wanderTarget.y += (Math.random()-0.5)*2 * this.displace;
+    // 约束回圆周上
+    this.wanderTarget = Vec.mul(Vec.normalize(this.wanderTarget), this.wanderRadius);
+
+    // 转到世界坐标
+    const worldTarget = Vec.add(circleCenter, this.wanderTarget);
+
+    // Seek：指向目标的期望速度
+    const desired = Vec.mul(Vec.normalize(Vec.sub(worldTarget, this.pos)), this.maxSpeed);
+    // steer = desired - velocity  转向力
+    let steer = Vec.sub(desired, this.vel);
+    steer = Vec.limit(steer, this.maxForce);
+    return steer;
+  }
+
+  // 施加力：F = ma，这里质量简化=1，所以 a += F
+  applyForce(force) {
+    this.acc = Vec.add(this.acc, force);
+  }
+
+  update() {
+    // 力产生加速度，更新速度
+    this.vel = Vec.add(this.vel, this.acc);
+    this.vel = Vec.limit(this.vel, this.maxSpeed);
+    // 更新位置
+    this.pos = Vec.add(this.pos, this.vel);
+    // 清空加速度（每帧力是瞬时的）
+    this.acc = {x:0, y:0};
+
+    // 边界环绕，跑出画布就从另一边回来
+    if(this.pos.x > canvas.width) this.pos.x = 0;
+    if(this.pos.x < 0) this.pos.x = canvas.width;
+    if(this.pos.y > canvas.height) this.pos.y = 0;
+    if(this.pos.y < 0) this.pos.y = canvas.height;
+  }
+
+  draw() {
+    ctx.save();
+    ctx.translate(this.pos.x, this.pos.y);
+    // 朝向旋转
+    const angle = Math.atan2(this.vel.y, this.vel.x);
+    ctx.rotate(angle);
+    // 画小三角角色
+    ctx.beginPath();
+    ctx.moveTo(12,0);
+    ctx.lineTo(-8,6);
+    ctx.lineTo(-8,-6);
+    ctx.closePath();
+    ctx.fillStyle="#2288ff";
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+const bot = new Agent(canvas.width/2, canvas.height/2);
+
+function loop() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  const wanderForce = bot.wander();
+  bot.applyForce(wanderForce);
+  bot.update();
+  bot.draw();
+
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
